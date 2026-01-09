@@ -1,67 +1,97 @@
 # Kitten
-Kotlin DI fast and safe library
 
-<img src="https://i.pinimg.com/236x/ae/a3/5a/aea35a7874af4c09d2ee73998d8f8b6d.jpg">
+**Fast and Safe Kotlin Multiplatform Dependency Injection Library**
 
-## Why?
-This library fit to small and espesially **huge** projects. You can use it for multimodule Kotlin/Java project.
+<img src="https://github.com/Open-Store-Foundation/brandbook/blob/main/Kitten/KittenDi.png?raw=true" width="100%" alt="hello">
 
-Advantages of this libraries:
-- **Lightweight** - the entire library takes only 5 KB space
-- **Fast** - this library **doesn't use Codegen or Reflection**, only your code
-- **Api/Core Modules** - you can connect super-lightweight **api** module to feature libraries, and **core** module for main library
-- **Safe** - unlike Dagger 2, kodin or koin you have to write all implmentation of objects, but API of this library really short
-- **Simple** - it's probably takes less code than Dagger 2
-- **Lifecycle Management** - there are a lot of helpers in library to mange lifecyle of **components/deps set/dep**
+## Overview
 
-## How to make module system?
-Commonly you don't have to create a lot of modules in your application, especially if you are using Gradle.
-</br>
-Try to create modules like a group of features. If some screen/parts are using in several modules, you can move it to common module.
-</br>
-Eventially your module system should looks like this.
-![image](https://user-images.githubusercontent.com/15245196/155395076-9c6e679d-3444-4455-9c8c-2d9e1903e480.png)
+Kitten is a dependency injection library suitable for projects of all sizes, from small prototypes
+to massive multi-module Kotlin Multiplatform applications. It focuses on simplicity, speed, and safety
+without the overhead of complex code generation or reflection.
 
+## Key Features
 
-## Guide
-### 1. Add ":core" dependency to your Main Library (Application Entrypoint)
-``` kotlin
-implementation("io.github.andrewchupin:core:1.1.0")
+* 🪶 **Lightweight**: The entire library footprint is approximately **5 KB**.
+* ⚡ **Fast**: Uses **no reflection, code generation, or compiler plugins**. It relies entirely on
+  standard Kotlin code.
+* 🌍 **Multiplatform**: Designed for **Kotlin Multiplatform** (Android, iOS, Desktop, Web).
+* 🧩 **Modular Architecture**: Promotes clean separation between **API** (interfaces) and **Core** (
+  implementation) modules.
+* 🛡️ **Type-Safe**: Unlike Dagger 2, Koin, or Kodein, you explicitly define implementations. The API
+  remains minimal while ensuring compile-time safety.
+* ✨ **Simple**: Significantly less boilerplate compared to Dagger 2.
+* 🔄 **Lifecycle Management**: Built-in support for managing the lifecycle of **components**, 
+  **dependency sets**, and **individual dependencies**.
+
+---
+
+## Modular Architecture Guide
+
+You don't need to create a separate module for every feature. Instead, group related features into
+modules. If a screen or component is shared across multiple modules, move it to a common module.
+
+Your module graph should eventually look like this:
+
+![Module Architecture](https://user-images.githubusercontent.com/15245196/155395076-9c6e679d-3444-4455-9c8c-2d9e1903e480.png)
+
+---
+
+## Integration Guide
+
+### 1. Add Core Dependency
+
+Add the `core` dependency to your **Main Library** (Application Entrypoint).
+
+```kotlin
+implementation("foundation.openstore.kitten:core:1.1.0")
 ```
-### 2. Add ":api" dependency to your Secondary Modules (Feature Entrypoint)
-``` kotlin
-implementation("io.github.andrewchupin:api:1.1.0")
-// or with android helpers
-implementation("io.github.andrewchupin:android:1.1.0")
+
+### 2. Add API Dependency
+
+Add the `api` dependency to your **Secondary Modules** (Feature Modules).
+
+```kotlin
+implementation("foundation.openstore.kitten:api:1.1.0")
+// OR with Android helpers
+implementation("foundation.openstore.kitten:viewmodel:1.1.0")
 ```
-### 3. Create some dependecies
-``` kotlin
-// Dependencies
+
+### 3. Define Dependencies
+
+Create your classes and interfaces as usual.
+
+```kotlin
+// Simple Dependencies
 class Seed(val num: Int)
 class NetworkObserver(app: Application, val seed: Seed)
 
-// Dependency with interface
+// Dependency with Interface
 interface Service
 class ServiceDefault(net: NetworkObserver) : Service
 
-// Dependency with data
+// Dependency with Data
 class Data
 interface Repo
 class RepoDefault(val id: Data, val service: Service) : Repo
 ```
 
-### 4. Create some components in Main Module
-``` kotlin
-// Main Component
+### 4. Create Components in Main Module
+
+Define how your components provide dependencies.
+
+```kotlin
+// Main Component Interface
 interface AppComponent : Component {
     val networkObserver: NetworkObserver
 }
 
+// Main Component Implementation
 class AppComponentDefault(
     private val app: Application,
 ) : AppComponent {
     private val seed: Seed by depLazy {
-        Seed(Random.nextInt()) // random each app session
+        Seed(Random.nextInt()) // Generated once per app session
     }
 
     override val networkObserver: NetworkObserver by depLazy {
@@ -69,185 +99,246 @@ class AppComponentDefault(
     }
 }
 
+// Data Component Interface
 interface DataComponent : Component {
     fun provideRepo(data: Data): Repo
 }
 
+// Data Component Implementation
 class DataComponentDefault(
     private val appCmp: AppComponent
 ) : DataComponent {
     private val service: Service by depLazy {
         ServiceDefault(appCmp.networkObserver)
     }
-    
+
     override fun provideRepo(data: Data): Repo {
-       RepoDefault(data, dataCmp.service)
+        RepoDefault(data, service)
     }
 }
 ```
 
-### 5. Create Injector in each Secondary Module
-``` kotlin
-// Feature component
-interface FooFeature
-class FooFeatureViewModel(val repo: FooRepo) : FooFeature
+### 5. Create Injector in Secondary Modules
 
-interface FooComponent: Component {
-    fun provideFooFeature(data: FooData): FooFeature
+Each feature module should expose an Injector and Component interface.
+
+```kotlin
+// Feature Definitions
+interface FooFeature
+class FooFeatureViewModel(val repo: Repo) : FooFeature
+
+// Feature Component Interface
+interface FooComponent : Component {
+    fun provideFooFeature(data: Data): FooFeature
 }
 
+// Feature Component Implementation
 class FooComponentDefault(
     val dataCmp: DataComponent
 ) : FooComponent {
-   override fun provideFooFeature(data: Data): FooFeature {
-        return FooFeatureViewModel(dataCmp.serviceRepo, dataCmp.provideRepo(data))
-   }
+    override fun provideFooFeature(data: Data): FooFeature {
+        return FooFeatureViewModel(dataCmp.provideRepo(data))
+    }
 }
 
+// Module Injector Object
 object ModInjector : Injector<FooComponent>()
 ```
 
 ### 6. Create Component Provider in Main Module
-``` kotlin
-class AppComponentProvider(
-    private val app: Application
-) : ComponentProvider() {
 
-    // Live entire lifcycle of first owner (e.g. GlobalScope)
-    val appCmp: AppComponent get() = singleton {
+This class manages the scope and lifecycle of your components.
+
+```kotlin
+class AppComponentRegistry(
+    private val app: Application
+) : ComponentRegistry() {
+
+    // Singleton: Lives for the entire lifecycle of the provider
+    val appCmp: AppComponent by singleton {
         AppComponentDefault(app)
     }
 
-    val dataComp: DataComponent get() = singleton {
+    val dataComp: DataComponent by singleton {
         DataComponentDefault(appCmp)
     }
-    
-    // Live when at least one owner/subowner is alive
-    val fooCmp: FooComponent get() = scoped {
+
+    // Shared: Lives as long as at least one owner/sub-owner is alive
+    val fooCmp: FooComponent by shared {
         FooComponentDefault(dataComp)
     }
 }
 ```
 
+### 7. Initialize Kitten in Application Class
 
-### 7. Init Injector in Main Module
+Wire everything together in your `Application.onCreate`.
 
-``` kotlin
-class Application {
+```kotlin
+class Application : Application() {
 
-    fun onCreate() {
+    override fun onCreate() {
+        super.onCreate()
+
         Kitten.init(
-            provider = AppComponentProvider(this)
-        ) {  provider ->
-            // create components immediately
-            create { provider.appCmp }
-            create { provider.dataComp }
+            registry = AppComponentRegistry(this)
+        ) { registry ->
+            // Eagerly create components
+            create { registry.appCmp }
+            create { registry.dataComp }
 
-            // Init delegate without deps and components
-            register(ModInjector) { provider.fooCmp }
+            // Register injectors
+            register(ModInjector) { registry.fooCmp }
         }
     }
 }
 ```
 
+### 8. Inject Dependencies in Feature Fragments
 
-### 8. Get your dependencies in each Secondary Module
-``` kotlin
-class FooFragment : ComponentLifecycle {
-    // View
+Retrieve dependencies in your UI components.
+
+```kotlin
+class FooFragment : Fragment() {
+
+    // Example: Standard View Injection
     fun onAttach() {
-        val feature = ModInjector.injectWith(this) { provideFoo(Data()) }
-        // or short example
-        val feature1 = ModInjector.inject { provideFoo(Data()) }
-        // or viewModel short example
-        val viewModel = ModInjector.viewModelLegacy { provideBar(Data()) }
+        val feature = ModInjector.injectWith(this) { provideFooFeature(Data()) }
+
+        // Short syntax
+        val feature1 = ModInjector.inject { provideFooFeature(Data()) }
+
+        // Android ViewModel syntax
+        val viewModel = ModInjector.viewModelLegacy { provideFooFeature(Data()) }
     }
-    
-    // Compose
+
+    // Example: Jetpack Compose
     @Composable
     fun Content() {
-        val feature = ModInjector.injectWith(this) { provideBar(Data()) }
-        // or short example
-        val feature1 = ModInjector.inject { provideBar(Data()) }
-        // or viewModel short example
-        val viewModel = ModInjector.viewModel { provideBar(Data()) }
+        val feature = ModInjector.injectWith(this) { provideFooFeature(Data()) }
+
+        // Short syntax
+        val feature1 = ModInjector.inject { provideFooFeature(Data()) }
+
+        // ViewModel syntax
+        val viewModel = ModInjector.viewModel { provideFooFeature(Data()) }
     }
 }
 ```
 
-## Scoped Component
+---
+
+## Advanced: Scoped Components (Dynamic Injection)
+
+Refactor your components to support dynamic data injection using shared (scoped) components.
+
 ```kotlin
-// FROM
+// 1. Refactor DataComponent Interface
 interface DataComponent : Component {
-    fun provideRepo(data: Data): Repo
+    val provideRepo: Repo // Change: Method -> Property
 }
 
-class DataComponentDefault(
-    private val appCmp: AppComponent
-) : DataComponent {
-    private val service: Service by depLazy {
-        ServiceDefault(appCmp.networkObserver)
-    }
-    
-    override fun provideRepo(data: Data): Repo {
-       RepoDefault(data, dataCmp.service)
-    }
-}
-
-// TO
-interface DataComponent : Component {
-    val provideRepo: Repo // CHANGED: METHOD -> FIELD
-}
-
+// 2. Refactor DataComponent Implementation
 class DataComponentDefault(
     private val appCmp: AppComponent,
-    private val data: Data // CHANGED: ADD DATA TO CONSTRUCTOR INSTEAD OF METHOD
+    private val data: Data // Change: Pass Data via Constructor
 ) : DataComponent {
     private val service: Service by depLazy {
         ServiceDefault(appCmp.networkObserver)
     }
-    
-    override val provideRepo: Repo by depLazy {  // CHANGED: METHOD -> FIELD
-       RepoDefault(data, dataCmp.service)
+
+    override val provideRepo: Repo by depLazy { // Change: Method -> Property
+        RepoDefault(data, service)
     }
 }
 
-class FooComponentDefault( 
-    val dataCmp: DynamicComponent<Data, DataComponent>, // CHANGED: DYNAMIC COMPONENT PROVIDER
-) {
+// 3. Update Feature Component to use DynamicComponent
+class FooComponentDefault(
+    // Change: Inject DynamicComponent wrapper
+    val dataCmp: ComponentProvider<Data, DataComponent>,
+) : FooComponent {
     override fun provideFooFeature(data: Data): FooFeature {
-        return FooFeatureViewModel(dataCmp.serviceRepo, dataCmp.for(data).provideRepo) // CHANGED: CREATE DYNAMIC COMPONENT FOR DATA
-   }
+        // Change: Create component for specific data
+        return FooFeatureViewModel(dataCmp[data].provideRepo)
+    }
 }
 
-class AppComponentProvider(
+// 4. Update Provider
+class AppComponentRegistry(
     private val app: Application
-) : ComponentProvider() {
+) : ComponentRegistry() {
 
-    val appCmp: AppComponent get() = singleton {
+    val appCmp: AppComponent by singleton {
         AppComponentDefault(app)
     }
-    
-    ...
-    fun dataComponent(data: data): DataComponent { // CHANGED: DYNAMIC COMPONENT CREATION
-        // Live when at least one owner/subowner is alive with the same data
-        return scoped(data) { DataComponentDefault(appCmp, data) } 
+
+    // Helper method to create DataComponent
+    fun dataComponent(data: Data): DataComponent {
+        // Usage: shared(key, factory)
+        // Use local delegated property to resolve the component instance
+        val component by shared(data) { DataComponentDefault(appCmp, data) }
+        return component
     }
-    ...
 }
 
+// 5. Update Initialization
 Kitten.init(
-    provider = AppComponentProvider(this)
-) {  provider ->
-    // create components immediately
-    create { provider.appCmp }
-    // create { provider.dataComp } CHANGED: COMMEND OLD DATA COMPOENENT
+    registry = AppComponentRegistry(this)
+) { registry ->
+    create { registry.appCmp }
 
-    // Init delegate without deps and components
     register(ModInjector) {
         FooComponentDefault(
-            dataComp = { data -> provider.dataComponent(data) } // CHANGED: DYNAMIC COMPONENT PROVIDER
+            // Pass the factory lambda
+            dataCmp = { data -> registry.dataComponent(data) }
         )
+    }
+}
+```
+
+## Advanced: Strict Modularization (External Dependencies)
+
+In strict modular architectures, a feature component might require dependencies from other components
+(like `AppComponent` or `DataComponent`) without depending on those components directly.
+This is achieved by defining a `Deps` interface within the feature component.
+
+```kotlin
+// 1. Feature Component with Deps Interface
+interface FooComponent : Component {
+    fun provideFooFeature(): FooFeature
+    
+    // Define requirements here
+    interface Deps {
+         fun provideRepo(data: Data): Repo
+    }
+}
+
+// 2. Feature Implementation
+class FooComponentDefault(
+    // Depend on Deps interface, not concrete components
+    private val deps: FooComponent.Deps 
+) : FooComponent {
+    override fun provideFooFeature(): FooFeature {
+        // Use dependencies from Deps
+        val repo = deps.provideRepo(Data())
+        return FooFeatureViewModel(repo)
+    }
+}
+
+// 3. Registry Wiring in Main Module
+class AppComponentRegistry(...) : ComponentRegistry() {
+    
+    // ... appCmp and dataComponent definitions ...
+
+    val fooCmp: FooComponent by shared {
+         FooComponentDefault(
+             // Implement Deps using available components
+             deps = object : FooComponent.Deps {
+                 override fun provideRepo(data: Data): Repo {
+                     return dataComponent(data).provideRepo
+                 }
+             }
+         )
     }
 }
 ```
