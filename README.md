@@ -201,7 +201,7 @@ interface DataComponent : Component {
 
 class DataComponentDefault(
     private val appCmp: AppComponent,
-    private val data: Data // CHANGED: ADD DATA TO CONSTRUCTUR INSTEAD OF METHOD
+    private val data: Data // CHANGED: ADD DATA TO CONSTRUCTOR INSTEAD OF METHOD
 ) : DataComponent {
     private val service: Service by depLazy {
         ServiceDefault(appCmp.networkObserver)
