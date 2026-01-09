@@ -47,19 +47,19 @@ class ServiceDefault(net: NetworkObserver) : Service
 // Dependency with data
 class Data
 interface Repo
-class RepoDefault(val id: Data, val service: Service)
+class RepoDefault(val id: Data, val service: Service) : Repo
 ```
 
 ### 4. Create some components in Main Module
 ``` kotlin
 // Main Component
-interface AppComponent {
+interface AppComponent : Component {
     val networkObserver: NetworkObserver
 }
 
 class AppComponentDefault(
     private val app: Application,
-): Component {
+) : AppComponent {
     private val seed: Seed by depLazy {
         Seed(Random.nextInt()) // random each app session
     }
@@ -76,7 +76,7 @@ interface DataComponent : Component {
 
 class DataComponentDefault(
     private val appCmp: AppComponent
-) : Component {
+) : DataComponent {
     private val service: Service by depLazy {
         ServiceDefault(appCmp.networkObserver)
     }
