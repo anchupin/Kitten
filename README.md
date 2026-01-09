@@ -216,7 +216,7 @@ class FooComponentDefault(
     val dataCmp: DynamicComponent<Data, DataComponent>, // CHANGED: DYNAMIC COMPONENT PROVIDER
 ) {
     override fun provideFooFeature(data: Data): FooFeature {
-        return FooFeatureViewModel(dataCmp.serviceRepo, dataCmp.for(data)) // CHANGED: CREATE DYNAMIC COMPONENT FOR DATA
+        return FooFeatureViewModel(dataCmp.serviceRepo, dataCmp.for(data).provideRepo) // CHANGED: CREATE DYNAMIC COMPONENT FOR DATA
    }
 }
 
