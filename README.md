@@ -37,82 +37,99 @@ implementation("io.github.andrewchupin:android:1.1.0")
 ### 3. Create some dependecies
 ``` kotlin
 // Dependencies
-class Seed(num: Int)
-class Network(seed: Seed)
+class Seed(val num: Int)
+class NetworkObserver(app: Application, val seed: Seed)
 
 // Dependency with interface
-interface ServiceRepo
-class ServiceRepoImpl(application: Application, net: Network) : ServiceRepo
+interface Service
+class ServiceDefault(net: NetworkObserver) : Service
 
-// Feature deps
-class FooData
-class FooRepo(val id: FooData, val net: Network)
-class FooFeature(val repo: FooRepo, val serviceRepo: ServiceRepo)
+// Dependency with data
+class Data
+interface Repo
+class RepoDefault(val id: Data, val service: Service)
 ```
+
 ### 4. Create some components in Main Module
 ``` kotlin
 // Main Component
-class AppComponent(
-    val service: Service,
+interface AppComponent {
+    val networkObserver: NetworkObserver
+}
+
+class AppComponentDefault(
+    private val app: Application,
 ): Component {
-    interface Net {
-        val seed: Seed
-        val network: Network
+    private val seed: Seed by depLazy {
+        Seed(Random.nextInt()) // random each app session
     }
 
-    interface Service {
-        val net: Net
-        val repo: ServiceRepo
+    override val networkObserver: NetworkObserver by depLazy {
+        NetworkObserver(app, seed)
     }
 }
 
 // Feature Component (have to provide something)
-interface FooComponent : Component {
-    val service: AppComponent.Service
-    val repo: FooRepo
+interface DataComponent : Component {
+    fun provideRepo(data: Data): Repo
+}
+
+class DataComponentDefault(
+    private val appCmp: AppComponent
+) : Component {
+    private val service: Service by depLazy {
+        ServiceDefault(appCmp.networkObserver)
+    }
+    
+    override fun provideRepo(data: Data): Repo {
+       RepoDefault(data, dataCmp.service)
+    }
 }
 ```
 
-### 5. Create Component Provider in Main Module
+### 5. Create Injector in each Secondary Module
+``` kotlin
+// Feature component
+interface FooFeature
+class FooFeatureViewModel(val repo: FooRepo) : FooFeature
+
+interface FooComponent: Component {
+    fun provideFooFeature(data: FooData): FooFeature
+}
+
+class FooComponentDefault(
+    val dataCmp: DataComponent
+) : FooComponent {
+   override fun provideFooFeature(data: Data): FooFeature {
+        return FooFeatureViewModel(dataCmp.serviceRepo, dataCmp.provideRepo(data))
+   }
+}
+
+object ModInjector : Injector<FooComponent>()
+```
+
+### 6. Create Component Provider in Main Module
 ``` kotlin
 class AppComponentProvider(
-    private val application: Application
+    private val app: Application
 ) : ComponentProvider() {
 
-    fun getFoo(id: FooData): FooComponent {
-        return getOrCreate(id) {
-            object : FooComponent {
-                override val service = app.service
-                override val repo by depRc { FooRepo(id, service.net.network) }
-            }
-        }
+    // Live entire lifcycle of first owner (e.g. GlobalScope)
+    val appCmp: AppComponent get() = singleton {
+        AppComponentDefault(app)
     }
 
-    val app get() = getOrCreate {
-        AppComponent(
-            object : AppComponent.Service {
-                override val net = object : AppComponent.Net {
-                    private val num = 12 // with component
-                    override val seed by depLazy { Seed(num) } // lazy
-                    override val network by depLazy { Network(seed) } // lazy
-                }
-
-                override val repo by depRc { ServiceRepoImpl(application, net.network) } // ref-counter
-            }
-        )
+    val dataComp: DataComponent get() = singleton {
+        DataComponentDefault(appCmp)
+    }
+    
+    // Live when at least one owner/subowner is alive
+    val fooCmp: FooComponent get() = scoped {
+        FooComponentDefault(dataComp)
     }
 }
 ```
 
-### 6. Create Injector in each Secondary Module
-``` kotlin
-interface ManDelegate {
-    fun provideFoo(data: FooData): FooFeature
-    fun provideBar(data: FooData): BarFeature
-}
-
-object ModInjector : Injector<ManDelegate>()
-```
 
 ### 7. Init Injector in Main Module
 
@@ -123,17 +140,12 @@ class Application {
         Kitten.init(
             provider = AppComponentProvider(this)
         ) {  deps ->
-            // Create deps and component immediately
-            create { deps.app }
+            // create components immediately
+            create { deps.appCmp }
+            create { deps.dataComp }
 
             // Init delegate without deps and components
-            register(ModInjector) {
-                object : ManDelegate {
-                    private fun component(data: FooData) = deps.getFoo(data)
-                    override fun provideFoo(data: FooData) = FooFeature(component(data).repo, deps.app.service.repo)
-                    override fun provideBar(data: FooData): BarFeature = BarFeature(component(data).service.repo)
-                }
-            }
+            register(ModInjector) { daps.fooCmp }
         }
     }
 }
@@ -145,21 +157,74 @@ class Application {
 class FooFragment : ComponentLifecycle {
     // View
     fun onAttach() {
-        val feature = ModInjector.injectWith(this) { provideFoo(FooData()) }
+        val feature = ModInjector.injectWith(this) { provideFoo(Data()) }
         // or short example
-        val feature1 = ModInjector.inject { provideFoo(FooData()) }
+        val feature1 = ModInjector.inject { provideFoo(Data()) }
         // or viewModel short example
-        val viewModel = ModInjector.viewModelLegacy { provideBar(FooData()) }
+        val viewModel = ModInjector.viewModelLegacy { provideBar(Data()) }
     }
     
     // Compose
     @Composable
     fun Content() {
-        val feature = ModInjector.injectWith(this) { provideBar(FooData()) }
+        val feature = ModInjector.injectWith(this) { provideBar(Data()) }
         // or short example
-        val feature1 = ModInjector.inject { provideBar(FooData()) }
+        val feature1 = ModInjector.inject { provideBar(Data()) }
         // or viewModel short example
-        val viewModel = ModInjector.viewModel { provideBar(FooData()) }
+        val viewModel = ModInjector.viewModel { provideBar(Data()) }
+    }
+}
+```
+
+## Scoped Component
+```kotlin
+interface SomeDependency
+class SomeDependencyDefault(val data: Data) : SomeDependency
+interface SomeComponent: Component {
+    val someDependency: SomeDependency
+}
+
+class SomeComponentDefault(
+    val data: Data // CHANGED: ADD DATA TO CONSTRUCTUR INSTEAD OF METHOD
+) : FooComponent {
+    override val someDependency: SomeDependency by depLazy {
+        return SomeDependencyDefault(data)
+    }
+}
+
+class FooComponentDefault( 
+    val dataCmp: DataComponent,
+    val someCmp: DynamicComponent<Data, SomeComponent>, // CHANGED: DYNAMIC COMPONENT PROVIDER
+) {
+    override fun provideFooFeature(data: Data): FooFeature {
+        return FooFeatureViewModel(dataCmp.serviceRepo, dataCmp.provideRepo(data), someCmp.for(data)) // CHANGED: CREATE DYNAMIC COMPONENT FOR DATA
+   }
+}
+
+class AppComponentProvider(
+    private val app: Application
+) : ComponentProvider() {
+    ...
+    fun someComponent(data: data): SomeComponent { // CHANGED: DYNAMIC COMPONENT CREATION
+        // Live when at least one owner/subowner is alive with the same data
+        return scoped(data) { SomeComponentDefault(data) } 
+    }
+    ...
+}
+
+Kitten.init(
+    provider = AppComponentProvider(this)
+) {  deps ->
+    // create components immediately
+    create { deps.appCmp }
+    create { deps.dataComp }
+
+    // Init delegate without deps and components
+    register(ModInjector) {
+        FooComponentDefault(
+            dataComp = dataComp,
+            someCmp = { data -> SomeComponent(data, deps.dataCmp) } // CHANGED: DYNAMIC COMPONENT PROVIDER
+        )
     }
 }
 ```
