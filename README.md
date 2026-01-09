@@ -6,6 +6,12 @@
 
 ## Overview
 
+🚨🚨🚨 [MOVED](https://github.com/Open-Store-Foundation/app/blob/main/lib/kitten)
+
+🚨🚨🚨 [MOVED](https://github.com/Open-Store-Foundation/app/blob/main/lib/kitten)
+
+🚨🚨🚨 [MOVED](https://github.com/Open-Store-Foundation/app/blob/main/lib/kitten)
+
 Kitten is a dependency injection library suitable for projects of all sizes, from small prototypes
 to massive multi-module Kotlin Multiplatform applications. It focuses on simplicity, speed, and safety
 without the overhead of complex code generation or reflection.
