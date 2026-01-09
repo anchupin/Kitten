@@ -69,7 +69,6 @@ class AppComponentDefault(
     }
 }
 
-// Feature Component (have to provide something)
 interface DataComponent : Component {
     fun provideRepo(data: Data): Repo
 }
@@ -139,13 +138,13 @@ class Application {
     fun onCreate() {
         Kitten.init(
             provider = AppComponentProvider(this)
-        ) {  deps ->
+        ) {  provider ->
             // create components immediately
-            create { deps.appCmp }
-            create { deps.dataComp }
+            create { provider.appCmp }
+            create { provider.dataComp }
 
             // Init delegate without deps and components
-            register(ModInjector) { daps.fooCmp }
+            register(ModInjector) { provider.fooCmp }
         }
     }
 }
@@ -178,52 +177,76 @@ class FooFragment : ComponentLifecycle {
 
 ## Scoped Component
 ```kotlin
-interface SomeDependency
-class SomeDependencyDefault(val data: Data) : SomeDependency
-interface SomeComponent: Component {
-    val someDependency: SomeDependency
+// FROM
+interface DataComponent : Component {
+    fun provideRepo(data: Data): Repo
 }
 
-class SomeComponentDefault(
-    val data: Data // CHANGED: ADD DATA TO CONSTRUCTUR INSTEAD OF METHOD
-) : FooComponent {
-    override val someDependency: SomeDependency by depLazy {
-        return SomeDependencyDefault(data)
+class DataComponentDefault(
+    private val appCmp: AppComponent
+) : DataComponent {
+    private val service: Service by depLazy {
+        ServiceDefault(appCmp.networkObserver)
+    }
+    
+    override fun provideRepo(data: Data): Repo {
+       RepoDefault(data, dataCmp.service)
+    }
+}
+
+// TO
+interface DataComponent : Component {
+    val provideRepo: Repo // CHANGED: METHOD -> FIELD
+}
+
+class DataComponentDefault(
+    private val appCmp: AppComponent,
+    private val data: Data // CHANGED: ADD DATA TO CONSTRUCTUR INSTEAD OF METHOD
+) : DataComponent {
+    private val service: Service by depLazy {
+        ServiceDefault(appCmp.networkObserver)
+    }
+    
+    override val provideRepo: Repo by depLazy {  // CHANGED: METHOD -> FIELD
+       RepoDefault(data, dataCmp.service)
     }
 }
 
 class FooComponentDefault( 
-    val dataCmp: DataComponent,
-    val someCmp: DynamicComponent<Data, SomeComponent>, // CHANGED: DYNAMIC COMPONENT PROVIDER
+    val dataCmp: DynamicComponent<Data, DataComponent>, // CHANGED: DYNAMIC COMPONENT PROVIDER
 ) {
     override fun provideFooFeature(data: Data): FooFeature {
-        return FooFeatureViewModel(dataCmp.serviceRepo, dataCmp.provideRepo(data), someCmp.for(data)) // CHANGED: CREATE DYNAMIC COMPONENT FOR DATA
+        return FooFeatureViewModel(dataCmp.serviceRepo, dataCmp.for(data)) // CHANGED: CREATE DYNAMIC COMPONENT FOR DATA
    }
 }
 
 class AppComponentProvider(
     private val app: Application
 ) : ComponentProvider() {
+
+    val appCmp: AppComponent get() = singleton {
+        AppComponentDefault(app)
+    }
+    
     ...
-    fun someComponent(data: data): SomeComponent { // CHANGED: DYNAMIC COMPONENT CREATION
+    fun dataComponent(data: data): DataComponent { // CHANGED: DYNAMIC COMPONENT CREATION
         // Live when at least one owner/subowner is alive with the same data
-        return scoped(data) { SomeComponentDefault(data) } 
+        return scoped(data) { DataComponentDefault(appCmp, data) } 
     }
     ...
 }
 
 Kitten.init(
     provider = AppComponentProvider(this)
-) {  deps ->
+) {  provider ->
     // create components immediately
-    create { deps.appCmp }
-    create { deps.dataComp }
+    create { provider.appCmp }
+    // create { provider.dataComp } CHANGED: COMMEND OLD DATA COMPOENENT
 
     // Init delegate without deps and components
     register(ModInjector) {
         FooComponentDefault(
-            dataComp = dataComp,
-            someCmp = { data -> SomeComponent(data, deps.dataCmp) } // CHANGED: DYNAMIC COMPONENT PROVIDER
+            dataComp = { data -> provider.dataComponent(data) } // CHANGED: DYNAMIC COMPONENT PROVIDER
         )
     }
 }
